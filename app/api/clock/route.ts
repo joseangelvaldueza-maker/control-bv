@@ -12,11 +12,26 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Missing userId or type' }, { status: 400 })
         }
 
-        // Optional: Verify PIN if provided
-        if (pin) {
-            const user = await prisma.user.findUnique({ where: { id: userId } })
-            if (user?.pin !== pin) {
-                return NextResponse.json({ error: 'Invalid PIN' }, { status: 401 })
+        // Validate one entry per day
+        if (type === 'CLOCK_IN') {
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+            const tomorrow = new Date(today)
+            tomorrow.setDate(tomorrow.getDate() + 1)
+
+            const existingEntry = await prisma.timeEntry.findFirst({
+                where: {
+                    userId: parseInt(userId),
+                    type: 'CLOCK_IN',
+                    timestamp: {
+                        gte: today,
+                        lt: tomorrow,
+                    },
+                },
+            })
+
+            if (existingEntry) {
+                return NextResponse.json({ error: 'Ya has registrado tu entrada hoy.' }, { status: 400 })
             }
         }
 
