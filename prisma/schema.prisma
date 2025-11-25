@@ -7,14 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id        Int         @id @default(autoincrement())
   name      String
   email     String?     @unique
   pin       String?     @unique
+  username  String?     @unique
+  password  String?
+  role      Role        @default(USER)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   entries   TimeEntry[]
+  schedule  WorkSchedule[]
 }
 
 model TimeEntry {
@@ -23,4 +32,14 @@ model TimeEntry {
   user      User     @relation(fields: [userId], references: [id])
   type      String   // CLOCK_IN, CLOCK_OUT, BREAK_START, BREAK_END
   timestamp DateTime @default(now())
+}
+
+model WorkSchedule {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek Int      // 0=Sunday, 1=Monday, ...
+  hours     Float
+  
+  @@unique([userId, dayOfWeek])
 }

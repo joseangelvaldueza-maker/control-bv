@@ -112,7 +112,7 @@ export default function Dashboard({ user, onLogout }: DashboardProps) {
                 </div>
             </div>
 
-            <History refreshTrigger={refreshHistory} />
+            <History refreshTrigger={refreshHistory} userId={user.id} />
         </div>
     )
 }

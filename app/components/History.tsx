@@ -11,14 +11,14 @@ interface TimeEntry {
     }
 }
 
-export default function History({ refreshTrigger }: { refreshTrigger: number }) {
+export default function History({ refreshTrigger, userId }: { refreshTrigger: number; userId: number }) {
     const [entries, setEntries] = useState<TimeEntry[]>([])
 
     useEffect(() => {
-        fetch('/api/history')
+        fetch(`/api/history?userId=${userId}`)
             .then((res) => res.json())
             .then((data) => setEntries(data))
-    }, [refreshTrigger])
+    }, [refreshTrigger, userId])
 
     const formatType = (type: string) => {
         switch (type) {

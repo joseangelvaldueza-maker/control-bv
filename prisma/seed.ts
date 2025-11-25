@@ -20,10 +20,22 @@ async function main() {
       email: 'bob@example.com',
       name: 'Bob',
       pin: '5678',
+      role: 'USER',
     },
   })
 
-  console.log({ user1, user2 })
+  const admin = await prisma.user.upsert({
+    where: { username: 'admin' },
+    update: {},
+    create: {
+      name: 'Administrador',
+      username: 'admin',
+      password: 'admin123', // En producción usar hash
+      role: 'ADMIN',
+    },
+  })
+
+  console.log({ user1, user2, admin })
 }
 
 main()
