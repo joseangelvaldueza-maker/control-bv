@@ -23,7 +23,8 @@ model User {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   entries   TimeEntry[]
-  schedule  WorkSchedule[]
+  schedulePlanId Int?
+  schedulePlan   SchedulePlan? @relation(fields: [schedulePlanId], references: [id])
 }
 
 model TimeEntry {
@@ -34,12 +35,19 @@ model TimeEntry {
   timestamp DateTime @default(now())
 }
 
-model WorkSchedule {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dayOfWeek Int      // 0=Sunday, 1=Monday, ...
+model SchedulePlan {
+  id        Int               @id @default(autoincrement())
+  name      String
+  days      SchedulePlanDay[]
+  users     User[]
+}
+
+model SchedulePlanDay {
+  id        Int          @id @default(autoincrement())
+  planId    Int
+  plan      SchedulePlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  dayOfWeek Int          // 0=Sunday, 1=Monday, ...
   hours     Float
   
-  @@unique([userId, dayOfWeek])
+  @@unique([planId, dayOfWeek])
 }

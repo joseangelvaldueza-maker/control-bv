@@ -9,14 +9,31 @@ interface UserFormProps {
 }
 
 export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        name: string
+        email: string
+        pin: string
+        username: string
+        password: string
+        role: string
+        schedulePlanId: string
+    }>({
         name: '',
         email: '',
         pin: '',
         username: '',
         password: '',
         role: 'USER',
+        schedulePlanId: '',
     })
+
+    const [plans, setPlans] = useState<{ id: number; name: string }[]>([])
+
+    useEffect(() => {
+        fetch('/api/admin/schedules')
+            .then(res => res.json())
+            .then(setPlans)
+    }, [])
 
     useEffect(() => {
         if (user) {
@@ -27,6 +44,7 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
                 username: user.username || '',
                 password: user.password || '',
                 role: user.role || 'USER',
+                schedulePlanId: user.schedulePlanId || '',
             })
         }
     }, [user])
@@ -106,6 +124,21 @@ export default function UserForm({ user, onSave, onCancel }: UserFormProps) {
                             </div>
                         </>
                     )}
+
+                    <div className="mb-4">
+                        <label className="block text-sm font-bold mb-2">Plan Horario</label>
+                        <select
+                            className="w-full border p-2 rounded"
+                            value={formData.schedulePlanId}
+                            onChange={e => setFormData({ ...formData, schedulePlanId: e.target.value })}
+                            required
+                        >
+                            <option value="">Seleccionar Plan...</option>
+                            {plans.map(plan => (
+                                <option key={plan.id} value={plan.id}>{plan.name}</option>
+                            ))}
+                        </select>
+                    </div>
                     <div className="flex justify-end gap-2 mt-4">
                         <button type="button" onClick={onCancel} className="px-4 py-2 bg-gray-200 rounded">Cancelar</button>
                         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">Guardar</button>

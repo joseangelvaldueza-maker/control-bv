@@ -7,6 +7,7 @@ export async function GET() {
     try {
         const users = await prisma.user.findMany({
             orderBy: { name: 'asc' },
+            include: { schedulePlan: true }
         })
         return NextResponse.json(users)
     } catch (error) {
@@ -27,7 +28,11 @@ export async function POST(request: Request) {
                 username,
                 password,
                 role: role || 'USER',
+                schedulePlanId: body.schedulePlanId ? parseInt(body.schedulePlanId) : null
             },
+            include: {
+                schedulePlan: true
+            }
         })
         return NextResponse.json(user)
     } catch (error) {

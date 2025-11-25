@@ -18,7 +18,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
                 username,
                 password,
                 role,
+                schedulePlanId: body.schedulePlanId ? parseInt(body.schedulePlanId) : null
             },
+            include: {
+                schedulePlan: true
+            }
         })
         return NextResponse.json(user)
     } catch (error) {
