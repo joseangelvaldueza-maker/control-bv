@@ -46,6 +46,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <Link href="/admin/schedules" className={`block p-2 rounded hover:bg-gray-700 ${pathname === '/admin/schedules' ? 'bg-gray-700' : ''}`}>
                         Horarios
                     </Link>
+                    <Link href="/admin/reports/compliance" className={`block p-2 rounded hover:bg-gray-700 ${pathname === '/admin/reports/compliance' ? 'bg-gray-700' : ''}`}>
+                        Informe Cumplimiento
+                    </Link>
                 </nav>
                 <button onClick={handleLogout} className="mt-8 w-full bg-red-600 hover:bg-red-700 p-2 rounded">
                     Cerrar Sesión
