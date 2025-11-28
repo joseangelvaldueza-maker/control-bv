@@ -2,12 +2,14 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-async function main() {
+async function cleanData() {
   // 1. Limpiar datos existentes
   await prisma.timeEntry.deleteMany({})
   await prisma.user.deleteMany({})
   await prisma.schedulePlan.deleteMany({})
+}
 
+async function createSchedulePlans() {
   // 2. Crear Planes Horarios
   const planFull = await prisma.schedulePlan.create({
     data: {
@@ -39,7 +41,12 @@ async function main() {
     include: { days: true }
   })
 
+  return { planFull, planMorning, planWeekend }
+}
+
+async function createUsers(plans: { planFull: any, planMorning: any, planWeekend: any }) {
   // 3. Crear Usuarios
+  const { planFull, planMorning, planWeekend } = plans
   const usersData = [
     { name: 'Carlos Full', email: 'carlos@test.com', pin: '1001', planId: planFull.id },
     { name: 'Diana Full', email: 'diana@test.com', pin: '1002', planId: planFull.id },
@@ -63,7 +70,10 @@ async function main() {
     })
     createdUsers.push(user)
   }
+  return createdUsers
+}
 
+async function createAdmin() {
   // Admin
   await prisma.user.upsert({
     where: { username: 'admin' },
@@ -75,19 +85,74 @@ async function main() {
       role: 'ADMIN',
     },
   })
+}
 
+async function generateDailyEntries(user: any, date: Date, expectedHours: number) {
+  // Aleatoriedad: 10% menos tiempo, 10% más tiempo, 80% puntual
+  const rand = Math.random()
+  let actualDuration = expectedHours
+
+  if (rand < 0.1) {
+    actualDuration = expectedHours - (Math.random() * 1.5) // Hasta 1.5h menos
+  } else if (rand > 0.9) {
+    actualDuration = expectedHours + (Math.random() * 1) // Hasta 1h más
+  }
+
+  // Hora de entrada base: 9:00 AM (o aleatoria entre 8:30 y 9:30)
+  const startHour = 9 + (Math.random() * 0.5 - 0.25) // 8:45 - 9:15
+  const startTime = new Date(date)
+  startTime.setHours(Math.floor(startHour), (startHour % 1) * 60)
+
+  // Clock In
+  await prisma.timeEntry.create({
+    data: { userId: user.id, type: 'CLOCK_IN', timestamp: startTime }
+  })
+
+  // Break (si jornada > 5h)
+  let breakDuration = 0
+  let abandoned = false
+
+  if (expectedHours > 5) {
+    const breakStart = new Date(startTime.getTime() + 4 * 60 * 60 * 1000) // 4h después de entrar
+    await prisma.timeEntry.create({
+      data: { userId: user.id, type: 'BREAK_START', timestamp: breakStart }
+    })
+
+    // 5% probabilidad de no volver del descanso (abandono)
+    if (Math.random() < 0.05) {
+      abandoned = true
+    } else {
+      breakDuration = 0.5 + Math.random() * 0.5 // 30-60 min
+      const breakEnd = new Date(breakStart.getTime() + breakDuration * 60 * 60 * 1000)
+      await prisma.timeEntry.create({
+        data: { userId: user.id, type: 'BREAK_END', timestamp: breakEnd }
+      })
+    }
+  }
+
+  // Clock Out (95% probability, si no abandonó)
+  if (!abandoned && Math.random() > 0.05) {
+    // Tiempo total trabajo = (Fin - Inicio) - Descanso
+    // Fin = Inicio + Trabajo + Descanso
+    const endTime = new Date(startTime.getTime() + (actualDuration + breakDuration) * 60 * 60 * 1000)
+    await prisma.timeEntry.create({
+      data: { userId: user.id, type: 'CLOCK_OUT', timestamp: endTime }
+    })
+  }
+}
+
+async function simulateTimeEntries(users: any[], plans: { planFull: any, planMorning: any, planWeekend: any }) {
   // 4. Simular Registros (Noviembre 2025)
+  const { planFull, planMorning, planWeekend } = plans
   const year = 2025
   const month = 10 // Noviembre es índice 10 en JS Date
   const daysInMonth = 30
 
   console.log('Generando registros para Noviembre...')
 
-  for (const user of createdUsers) {
+  for (const user of users) {
     // Obtener días laborables del plan del usuario
     const plan = [planFull, planMorning, planWeekend].find(p => p.id === user.schedulePlanId)
-    // @ts-ignore
-    const workingDays = plan?.days.map(d => d.dayOfWeek) || [] // Simplificación, en realidad habría que consultar la DB o usar el objeto en memoria si tuviera los days incluidos
 
     // Hack: reconstruir mapa de horas
     let hoursMap: Record<number, number> = {}
@@ -100,74 +165,28 @@ async function main() {
       const dayOfWeek = date.getDay()
 
       if (hoursMap[dayOfWeek]) {
-        const expectedHours = hoursMap[dayOfWeek]
-
-        // Aleatoriedad: 10% menos tiempo, 10% más tiempo, 80% puntual
-        const rand = Math.random()
-        let actualDuration = expectedHours
-        let note = 'Puntual'
-
-        if (rand < 0.1) {
-          actualDuration = expectedHours - (Math.random() * 1.5) // Hasta 1.5h menos
-          note = 'Menos tiempo'
-        } else if (rand > 0.9) {
-          actualDuration = expectedHours + (Math.random() * 1) // Hasta 1h más
-          note = 'Más tiempo'
-        }
-
-        // Hora de entrada base: 9:00 AM (o aleatoria entre 8:30 y 9:30)
-        const startHour = 9 + (Math.random() * 0.5 - 0.25) // 8:45 - 9:15
-        const startTime = new Date(year, month, day, Math.floor(startHour), (startHour % 1) * 60)
-
-        // Clock In
-        await prisma.timeEntry.create({
-          data: { userId: user.id, type: 'CLOCK_IN', timestamp: startTime }
-        })
-
-        // Break (si jornada > 5h)
-        let breakDuration = 0
-        let abandoned = false
-
-        if (expectedHours > 5) {
-          const breakStart = new Date(startTime.getTime() + 4 * 60 * 60 * 1000) // 4h después de entrar
-          await prisma.timeEntry.create({
-            data: { userId: user.id, type: 'BREAK_START', timestamp: breakStart }
-          })
-
-          // 5% probabilidad de no volver del descanso (abandono)
-          if (Math.random() < 0.05) {
-            abandoned = true
-          } else {
-            breakDuration = 0.5 + Math.random() * 0.5 // 30-60 min
-            const breakEnd = new Date(breakStart.getTime() + breakDuration * 60 * 60 * 1000)
-            await prisma.timeEntry.create({
-              data: { userId: user.id, type: 'BREAK_END', timestamp: breakEnd }
-            })
-          }
-        }
-
-        // Clock Out (95% probability, si no abandonó)
-        if (!abandoned && Math.random() > 0.05) {
-          // Tiempo total trabajo = (Fin - Inicio) - Descanso
-          // Fin = Inicio + Trabajo + Descanso
-          const endTime = new Date(startTime.getTime() + (actualDuration + breakDuration) * 60 * 60 * 1000)
-          await prisma.timeEntry.create({
-            data: { userId: user.id, type: 'CLOCK_OUT', timestamp: endTime }
-          })
-        }
+        await generateDailyEntries(user, date, hoursMap[dayOfWeek])
       }
     }
   }
+}
+
+async function main() {
+  await cleanData()
+  const plans = await createSchedulePlans()
+  const createdUsers = await createUsers(plans)
+  await createAdmin()
+  await simulateTimeEntries(createdUsers, plans)
 
   console.log('Datos generados correctamente.')
 }
 
-main()
-  .then(async () => {
-    await prisma.$disconnect()
-  })
-  .catch(async (e) => {
-    console.error(e)
-    await prisma.$disconnect()
-    process.exit(1)
-  })
+try {
+  await main()
+} catch (e) {
+  console.error(e)
+  process.exit(1)
+} finally {
+  await prisma.$disconnect()
+}
+

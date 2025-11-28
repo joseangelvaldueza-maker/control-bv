@@ -26,7 +26,8 @@ async function main() {
                 console.log(`Usuario: ${user.name}`)
                 console.log(`Fecha: ${date}`)
                 console.log(`Registros del día:`)
-                entries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()).forEach(e => {
+                entries.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+                entries.forEach(e => {
                     console.log(` - ${format(e.timestamp, 'HH:mm:ss')} ${e.type}`)
                 })
                 return // Stop after first match
@@ -36,12 +37,11 @@ async function main() {
     console.log('No se encontraron ejemplos (mala suerte con el random?).')
 }
 
-main()
-    .then(async () => {
-        await prisma.$disconnect()
-    })
-    .catch(async (e) => {
-        console.error(e)
-        await prisma.$disconnect()
-        process.exit(1)
-    })
+try {
+    await main()
+    await prisma.$disconnect()
+} catch (e) {
+    console.error(e)
+    await prisma.$disconnect()
+    process.exit(1)
+}

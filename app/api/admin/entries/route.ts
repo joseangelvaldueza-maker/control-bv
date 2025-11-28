@@ -10,13 +10,14 @@ export async function POST(request: Request) {
 
         const entry = await prisma.timeEntry.create({
             data: {
-                userId: parseInt(userId),
+                userId: Number.parseInt(userId),
                 type,
                 timestamp: new Date(timestamp)
             }
         })
         return NextResponse.json(entry)
     } catch (error) {
+        console.error('Error creating entry:', error)
         return NextResponse.json({ error: 'Error creating entry' }, { status: 500 })
     }
 }

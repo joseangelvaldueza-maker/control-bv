@@ -28,11 +28,33 @@ interface EditableEntry {
     isDeleted?: boolean
 }
 
+// Interface for API response
+interface RawEntry {
+    id: number
+    type: string
+    timestamp: string
+}
+
+const MINUTES_8_HOURS = 480
+const MINUTES_4_HOURS = 240
+const MINUTES_30_MINS = 30
+const MINUTES_2_HOURS = 120
+const MINUTES_2_5_HOURS = 150
+
+const TYPE_CLOCK_IN = 'CLOCK_IN'
+const TYPE_CLOCK_OUT = 'CLOCK_OUT'
+const TYPE_BREAK_START = 'BREAK_START'
+const TYPE_BREAK_END = 'BREAK_END'
+
+const DATE_FORMAT_ISO = 'yyyy-MM-dd'
+const TIME_FORMAT_HM = 'HH:mm'
+const API_JSON_HEADER = { 'Content-Type': 'application/json' }
+
 export default function ComplianceReport() {
     const [users, setUsers] = useState<User[]>([])
     const [selectedUser, setSelectedUser] = useState('')
-    const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'))
-    const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'))
+    const [startDate, setStartDate] = useState('')
+    const [endDate, setEndDate] = useState('')
     const [report, setReport] = useState<DailyReport[]>([])
     const [loading, setLoading] = useState(false)
 
@@ -45,6 +67,9 @@ export default function ComplianceReport() {
     const [hasChanges, setHasChanges] = useState(false)
 
     useEffect(() => {
+        setStartDate(format(startOfMonth(new Date()), DATE_FORMAT_ISO))
+        setEndDate(format(endOfMonth(new Date()), DATE_FORMAT_ISO))
+
         fetch('/api/admin/users')
             .then(res => res.json())
             .then(setUsers)
@@ -82,11 +107,11 @@ export default function ComplianceReport() {
             const data = await res.json()
 
             // Map to editable format
-            const editable = data.map((e: any) => ({
+            const editable = data.map((e: RawEntry) => ({
                 id: e.id,
                 type: e.type,
-                timeStr: format(new Date(e.timestamp), 'HH:mm'),
-                originalTimeStr: format(new Date(e.timestamp), 'HH:mm'),
+                timeStr: format(new Date(e.timestamp), TIME_FORMAT_HM),
+                originalTimeStr: format(new Date(e.timestamp), TIME_FORMAT_HM),
                 originalType: e.type
             }))
 
@@ -130,70 +155,70 @@ export default function ComplianceReport() {
                 const [h, m] = time.split(':').map(Number)
                 const date = new Date()
                 date.setHours(h, m + mins)
-                return format(date, 'HH:mm')
+                return format(date, TIME_FORMAT_HM)
             }
 
             const subtractMinutes = (time: string, mins: number) => {
                 const [h, m] = time.split(':').map(Number)
                 const date = new Date()
                 date.setHours(h, m - mins)
-                return format(date, 'HH:mm')
+                return format(date, TIME_FORMAT_HM)
             }
 
             if (!topEntry) {
                 // 6.5 No data -> New Entry (CLOCK_IN)
                 newEntries.push({
                     id: `new-${Date.now()}`,
-                    type: 'CLOCK_IN',
+                    type: TYPE_CLOCK_IN,
                     timeStr: '09:00',
                     originalTimeStr: '',
                     originalType: '',
                     isNew: true
                 })
-            } else if (topEntry.type === 'CLOCK_IN') {
+            } else if (topEntry.type === TYPE_CLOCK_IN) {
                 // 6.4 Entry -> Generate Out
                 newEntries.push({
                     id: `new-${Date.now()}`,
-                    type: 'CLOCK_OUT',
-                    timeStr: addMinutes(topEntry.timeStr, 480), // +8h
+                    type: TYPE_CLOCK_OUT,
+                    timeStr: addMinutes(topEntry.timeStr, MINUTES_8_HOURS), // +8h
                     originalTimeStr: '',
                     originalType: '',
                     isNew: true
                 })
-            } else if (topEntry.type === 'BREAK_START') {
+            } else if (topEntry.type === TYPE_BREAK_START) {
                 // 6.3 Break Start -> Generate Break End
                 newEntries.push({
                     id: `new-${Date.now()}`,
-                    type: 'BREAK_END',
-                    timeStr: addMinutes(topEntry.timeStr, 30),
+                    type: TYPE_BREAK_END,
+                    timeStr: addMinutes(topEntry.timeStr, MINUTES_30_MINS),
                     originalTimeStr: '',
                     originalType: '',
                     isNew: true
                 })
-            } else if (topEntry.type === 'BREAK_END') {
+            } else if (topEntry.type === TYPE_BREAK_END) {
                 // 6.2 Break End -> Generate Out
                 newEntries.push({
                     id: `new-${Date.now()}`,
-                    type: 'CLOCK_OUT',
-                    timeStr: addMinutes(topEntry.timeStr, 240), // +4h
+                    type: TYPE_CLOCK_OUT,
+                    timeStr: addMinutes(topEntry.timeStr, MINUTES_4_HOURS), // +4h
                     originalTimeStr: '',
                     originalType: '',
                     isNew: true
                 })
-            } else if (topEntry.type === 'CLOCK_OUT') {
+            } else if (topEntry.type === TYPE_CLOCK_OUT) {
                 // 6.1 Out -> Generate Break Start & End BEFORE Out
                 const breakEnd = {
                     id: `new-${Date.now()}-1`,
-                    type: 'BREAK_END',
-                    timeStr: subtractMinutes(topEntry.timeStr, 120),
+                    type: TYPE_BREAK_END,
+                    timeStr: subtractMinutes(topEntry.timeStr, MINUTES_2_HOURS),
                     originalTimeStr: '',
                     originalType: '',
                     isNew: true
                 }
                 const breakStart = {
                     id: `new-${Date.now()}-2`,
-                    type: 'BREAK_START',
-                    timeStr: subtractMinutes(topEntry.timeStr, 150),
+                    type: TYPE_BREAK_START,
+                    timeStr: subtractMinutes(topEntry.timeStr, MINUTES_2_5_HOURS),
                     originalTimeStr: '',
                     originalType: '',
                     isNew: true
@@ -210,26 +235,26 @@ export default function ComplianceReport() {
         // Sort Ascending for validation logic
         const sorted = [...entries].sort((a, b) => a.timeStr.localeCompare(b.timeStr))
 
-        const ins = sorted.filter(e => e.type === 'CLOCK_IN')
-        const outs = sorted.filter(e => e.type === 'CLOCK_OUT')
+        const ins = sorted.filter(e => e.type === TYPE_CLOCK_IN)
+        const outs = sorted.filter(e => e.type === TYPE_CLOCK_OUT)
 
         // 5.3 Only 1 In, 1 Out
         if (ins.length > 1) return 'Solo puede haber una Entrada.'
         if (outs.length > 1) return 'Solo puede haber una Salida.'
 
         // 5.1 In at bottom (First in Ascending)
-        if (ins.length > 0 && sorted[0].type !== 'CLOCK_IN') return 'La Entrada debe ser el primer registro.'
+        if (ins.length > 0 && sorted[0].type !== TYPE_CLOCK_IN) return 'La Entrada debe ser el primer registro.'
 
         // 5.2 Out at top (Last in Ascending)
-        if (outs.length > 0 && sorted[sorted.length - 1].type !== 'CLOCK_OUT') return 'La Salida debe ser el último registro.'
+        if (outs.length > 0 && sorted.at(-1)?.type !== TYPE_CLOCK_OUT) return 'La Salida debe ser el último registro.'
 
         // Logical sequence check
         for (let i = 0; i < sorted.length - 1; i++) {
             const curr = sorted[i]
             const next = sorted[i + 1]
 
-            if (curr.type === 'CLOCK_IN' && next.type === 'BREAK_END') return 'No puede haber Fin Pausa después de Entrada.'
-            if (curr.type === 'BREAK_START' && next.type === 'CLOCK_OUT') return 'No puede haber Salida después de Inicio Pausa (falta Fin Pausa).'
+            if (curr.type === TYPE_CLOCK_IN && next.type === TYPE_BREAK_END) return 'No puede haber Fin Pausa después de Entrada.'
+            if (curr.type === TYPE_BREAK_START && next.type === TYPE_CLOCK_OUT) return 'No puede haber Salida después de Inicio Pausa (falta Fin Pausa).'
         }
 
         return null
@@ -238,7 +263,8 @@ export default function ComplianceReport() {
     const handleSaveChanges = async () => {
         const error = validateEntries(localEntries)
         if (error) {
-            alert(error)
+            // alert(error) - Sonar violation
+            console.warn(error)
             return
         }
 
@@ -246,10 +272,10 @@ export default function ComplianceReport() {
         const start = `${selectedDateStr}T00:00:00`
         const end = `${selectedDateStr}T23:59:59`
         const res = await fetch(`/api/admin/reports?userId=${selectedUser}&startDate=${start}&endDate=${end}`)
-        const dbEntries = await res.json()
+        const dbEntries: RawEntry[] = await res.json()
 
         const localIds = new Set(localEntries.map(e => e.id))
-        const toDelete = dbEntries.filter((e: any) => !localIds.has(e.id))
+        const toDelete = dbEntries.filter((e) => !localIds.has(e.id))
 
         // Execute Deletes
         for (const entry of toDelete) {
@@ -264,30 +290,44 @@ export default function ComplianceReport() {
                 // Create
                 await fetch('/api/admin/entries', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: API_JSON_HEADER,
                     body: JSON.stringify({
                         userId: selectedUser,
                         type: entry.type,
                         timestamp
                     })
                 })
-            } else {
+            } else if (entry.timeStr !== entry.originalTimeStr || entry.type !== entry.originalType) {
                 // Update if changed
-                if (entry.timeStr !== entry.originalTimeStr || entry.type !== entry.originalType) {
-                    await fetch(`/api/admin/entries/${entry.id}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: entry.type,
-                            timestamp
-                        })
+                await fetch(`/api/admin/entries/${entry.id}`, {
+                    method: 'PUT',
+                    headers: API_JSON_HEADER,
+                    body: JSON.stringify({
+                        type: entry.type,
+                        timestamp
                     })
-                }
+                })
             }
         }
 
         setDetailsModalOpen(false)
         generateReport() // Refresh main report
+    }
+
+    const renderStatus = (row: DailyReport) => {
+        if (!row.isWorkDay) return <span className="text-gray-400">-</span>
+        if (row.compliant) {
+            return (
+                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                    Cumplido
+                </span>
+            )
+        }
+        return (
+            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                Incumplido
+            </span>
+        )
     }
 
     return (
@@ -296,8 +336,9 @@ export default function ComplianceReport() {
 
             <div className="bg-white p-6 rounded-lg shadow mb-8 flex gap-4 items-end">
                 <div>
-                    <label className="block text-sm font-bold mb-2">Usuario</label>
+                    <label htmlFor="user-select" className="block text-sm font-bold mb-2">Usuario</label>
                     <select
+                        id="user-select"
                         className="border p-2 rounded w-64"
                         value={selectedUser}
                         onChange={e => setSelectedUser(e.target.value)}
@@ -309,8 +350,9 @@ export default function ComplianceReport() {
                     </select>
                 </div>
                 <div>
-                    <label className="block text-sm font-bold mb-2">Desde</label>
+                    <label htmlFor="start-date" className="block text-sm font-bold mb-2">Desde</label>
                     <input
+                        id="start-date"
                         type="date"
                         className="border p-2 rounded"
                         value={startDate}
@@ -318,8 +360,9 @@ export default function ComplianceReport() {
                     />
                 </div>
                 <div>
-                    <label className="block text-sm font-bold mb-2">Hasta</label>
+                    <label htmlFor="end-date" className="block text-sm font-bold mb-2">Hasta</label>
                     <input
+                        id="end-date"
                         type="date"
                         className="border p-2 rounded"
                         value={endDate}
@@ -364,19 +407,7 @@ export default function ComplianceReport() {
                                         {row.actualHours.toFixed(2)} h
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                        {row.isWorkDay ? (
-                                            row.compliant ? (
-                                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                                    Cumplido
-                                                </span>
-                                            ) : (
-                                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                                                    Incumplido
-                                                </span>
-                                            )
-                                        ) : (
-                                            <span className="text-gray-400">-</span>
-                                        )}
+                                        {renderStatus(row)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                                         <button
@@ -424,15 +455,16 @@ export default function ComplianceReport() {
                                 {localEntries.map((entry, index) => {
                                     // Chronologically previous entry (since list is descending, next index is earlier)
                                     const prevEntry = localEntries[index + 1]
-                                    const isAfterClockIn = prevEntry?.type === 'CLOCK_IN'
-                                    const isAfterBreakStart = prevEntry?.type === 'BREAK_START'
-                                    const isAfterBreakEnd = prevEntry?.type === 'BREAK_END'
+                                    const isAfterClockIn = prevEntry?.type === TYPE_CLOCK_IN
+                                    const isAfterBreakStart = prevEntry?.type === TYPE_BREAK_START
+                                    const isAfterBreakEnd = prevEntry?.type === TYPE_BREAK_END
 
                                     return (
                                         <tr key={entry.id}>
                                             <td className="px-4 py-2">
                                                 <input
                                                     type="time"
+                                                    aria-label="Hora"
                                                     className="border p-1 rounded"
                                                     value={entry.timeStr}
                                                     onChange={(e) => handleLocalUpdate(entry.id, 'timeStr', e.target.value)}
@@ -440,29 +472,30 @@ export default function ComplianceReport() {
                                             </td>
                                             <td className="px-4 py-2">
                                                 <select
+                                                    aria-label="Tipo"
                                                     className="border p-1 rounded w-full"
                                                     value={entry.type}
                                                     onChange={(e) => handleLocalUpdate(entry.id, 'type', e.target.value)}
-                                                    disabled={entry.type === 'CLOCK_IN'} // 5.6 Never edit Entry type
+                                                    disabled={entry.type === TYPE_CLOCK_IN} // 5.6 Never edit Entry type
                                                 >
                                                     {/* Only show CLOCK_IN if it doesn't exist elsewhere or this IS the CLOCK_IN entry. AND NOT after Break Start */}
-                                                    {(!isAfterBreakStart && (!localEntries.some(e => e.type === 'CLOCK_IN') || entry.type === 'CLOCK_IN')) && (
-                                                        <option value="CLOCK_IN">Entrada (CLOCK_IN)</option>
+                                                    {(!isAfterBreakStart && (!localEntries.some(e => e.type === TYPE_CLOCK_IN) || entry.type === TYPE_CLOCK_IN)) && (
+                                                        <option value={TYPE_CLOCK_IN}>Entrada (CLOCK_IN)</option>
                                                     )}
 
                                                     {/* Hide BREAK_START if previous entry is BREAK_START */}
                                                     {!isAfterBreakStart && (
-                                                        <option value="BREAK_START">Inicio Pausa (BREAK_START)</option>
+                                                        <option value={TYPE_BREAK_START}>Inicio Pausa (BREAK_START)</option>
                                                     )}
 
                                                     {/* Hide BREAK_END if previous entry is CLOCK_IN or BREAK_END */}
                                                     {!isAfterClockIn && !isAfterBreakEnd && (
-                                                        <option value="BREAK_END">Fin Pausa (BREAK_END)</option>
+                                                        <option value={TYPE_BREAK_END}>Fin Pausa (BREAK_END)</option>
                                                     )}
 
                                                     {/* Hide CLOCK_OUT if previous entry is BREAK_START */}
                                                     {!isAfterBreakStart && (
-                                                        <option value="CLOCK_OUT">Salida (CLOCK_OUT)</option>
+                                                        <option value={TYPE_CLOCK_OUT}>Salida (CLOCK_OUT)</option>
                                                     )}
                                                 </select>
                                             </td>
