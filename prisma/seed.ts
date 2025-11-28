@@ -126,26 +126,35 @@ async function main() {
 
         // Break (si jornada > 5h)
         let breakDuration = 0
+        let abandoned = false
+
         if (expectedHours > 5) {
           const breakStart = new Date(startTime.getTime() + 4 * 60 * 60 * 1000) // 4h después de entrar
           await prisma.timeEntry.create({
             data: { userId: user.id, type: 'BREAK_START', timestamp: breakStart }
           })
 
-          breakDuration = 0.5 + Math.random() * 0.5 // 30-60 min
-          const breakEnd = new Date(breakStart.getTime() + breakDuration * 60 * 60 * 1000)
-          await prisma.timeEntry.create({
-            data: { userId: user.id, type: 'BREAK_END', timestamp: breakEnd }
-          })
+          // 5% probabilidad de no volver del descanso (abandono)
+          if (Math.random() < 0.05) {
+            abandoned = true
+          } else {
+            breakDuration = 0.5 + Math.random() * 0.5 // 30-60 min
+            const breakEnd = new Date(breakStart.getTime() + breakDuration * 60 * 60 * 1000)
+            await prisma.timeEntry.create({
+              data: { userId: user.id, type: 'BREAK_END', timestamp: breakEnd }
+            })
+          }
         }
 
-        // Clock Out
-        // Tiempo total trabajo = (Fin - Inicio) - Descanso
-        // Fin = Inicio + Trabajo + Descanso
-        const endTime = new Date(startTime.getTime() + (actualDuration + breakDuration) * 60 * 60 * 1000)
-        await prisma.timeEntry.create({
-          data: { userId: user.id, type: 'CLOCK_OUT', timestamp: endTime }
-        })
+        // Clock Out (95% probability, si no abandonó)
+        if (!abandoned && Math.random() > 0.05) {
+          // Tiempo total trabajo = (Fin - Inicio) - Descanso
+          // Fin = Inicio + Trabajo + Descanso
+          const endTime = new Date(startTime.getTime() + (actualDuration + breakDuration) * 60 * 60 * 1000)
+          await prisma.timeEntry.create({
+            data: { userId: user.id, type: 'CLOCK_OUT', timestamp: endTime }
+          })
+        }
       }
     }
   }
